@@ -1,0 +1,53 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>AiProxy</RootNamespace>
+    <AssemblyName>AiProxy</AssemblyName>
+    <Version>0.1.0</Version>
+    <!-- 单文件自包含发布配置（Task 8） -->
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <!-- 将 SQLite 原生库（e_sqlite3 等）打包进单文件，避免运行时缺失 native 依赖 -->
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <!-- 压缩单文件包内程序集，减小分发体积（首次启动会解压到临时目录） -->
+    <EnableCompressionInSingleFile Condition="'$(SelfContained)' == 'true'">true</EnableCompressionInSingleFile>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- RuntimeIdentifier 不在 csproj 硬编码，发布时通过 -r 参数传入以支持跨平台构建 -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Yarp.ReverseProxy" Version="2.3.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.9" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.9">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <!-- 管理面板静态资源嵌入为资源（无需 wwwroot 静态文件中间件，保持单文件部署友好） -->
+  <ItemGroup>
+    <EmbeddedResource Include="Admin\wwwroot\index.html" />
+    <EmbeddedResource Include="Admin\wwwroot\style.css" />
+    <EmbeddedResource Include="Admin\wwwroot\i18n.js" />
+    <EmbeddedResource Include="Admin\wwwroot\app.js" />
+  </ItemGroup>
+
+  <!--
+    抑制 SQLitePCLRaw.lib.e_sqlite3 2.1.11 的 NU1903 审计告警（GHSA-2m69-gcr7-jv3q / CVE-2025-6965）。
+    背景：该包是 Microsoft.EntityFrameworkCore.Sqlite 10.0.9（net10.0 当前最新稳定版）的传递依赖，
+          2.1.11 是 2.x 线最终版本且已弃用，包内捆绑的 SQLite < 3.50.2 存在内存损坏漏洞。
+    不可直接升级的原因：修复后的 SQLite 由 SQLitePCLRaw 3.0 提供，而 Microsoft.Data.Sqlite 11.0
+          （EF Core 11，尚未针对 net10.0 发布稳定版）才适配 3.0 的破坏性变更；将 3.0.x 强加到
+          Microsoft.Data.Sqlite 10.0.9 会导致运行时初始化失败。待 EF Core 11 稳定后可移除此抑制。
+    实际风险评估：CVE-2025-6965 的触发前提是「攻击者可执行任意 SQL」或「提交恶意构造的数据库文件」。
+          本服务 SQLite 仅持久化自身生成的请求日志（无外部 SQL 输入、不打开外部 db 文件），漏洞不可利用。
+    采用 NuGetAuditSuppress 精确抑制单条 advisory，不影响其他未来漏洞告警。
+  -->
+  <ItemGroup>
+    <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-2m69-gcr7-jv3q" />
+  </ItemGroup>
+
+</Project>

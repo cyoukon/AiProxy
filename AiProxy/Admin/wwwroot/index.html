@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>AI Proxy 管理面板</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/admin/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1 data-i18n="app.title">AI Proxy 管理面板</h1>
+    <nav class="tabs">
+      <button class="tab-btn active" data-tab="overview" data-i18n="tab.overview">服务概览</button>
+      <button class="tab-btn" data-tab="logs" data-i18n="tab.logs">日志查询</button>
+      <button class="tab-btn" data-tab="stats" data-i18n="tab.stats">用量统计</button>
+      <button class="tab-btn" data-tab="config" data-i18n="tab.config">配置管理</button>
+    </nav>
+    <div class="auth-controls">
+      <select id="langSelect" class="lang-switch"></select>
+      <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--muted);"><span data-i18n="tz.label">时区</span>
+        <select id="tzSelect" style="border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-size:12px;"></select>
+      </label>
+      <span class="auth-status" id="authStatus"></span>
+      <input id="apiKey" type="password" data-i18n-placeholder="auth.placeholder" placeholder="API Key（启用鉴权时填写）" autocomplete="off">
+      <button class="btn btn-secondary" id="saveKey" data-i18n="auth.save">保存</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- 服务概览 -->
+    <section id="tab-overview" class="tab-content active">
+      <h2 data-i18n="overview.title">服务概览</h2>
+      <div class="card">
+        <table id="overviewTable">
+          <thead><tr id="overviewHead"></tr></thead>
+          <tbody><tr><td colspan="8" class="empty" data-i18n="overview.loading">加载中…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 日志查询 -->
+    <section id="tab-logs" class="tab-content">
+      <h2 data-i18n="logs.title">日志查询</h2>
+      <div class="card">
+        <form class="filters" id="logsFilter" onsubmit="return false;">
+          <label><span data-i18n="logs.from">开始时间</span><input type="datetime-local" id="logsFrom"></label>
+          <label><span data-i18n="logs.to">结束时间</span><input type="datetime-local" id="logsTo"></label>
+          <label><span data-i18n="logs.service">服务</span>
+            <select id="logsService"><option value="" data-i18n="common.all">全部</option></select>
+          </label>
+          <label><span data-i18n="logs.model">模型</span><input type="text" id="logsModel" data-i18n-placeholder="logs.modelPlaceholder" placeholder="如 gpt-4o"></label>
+          <label><span data-i18n="logs.status">状态</span>
+            <select id="logsStatus">
+              <option value="" data-i18n="logs.statusAll">全部</option>
+              <option value="1" data-i18n="logs.statusSuccess">成功 (2xx)</option>
+              <option value="0" data-i18n="logs.statusFail">失败 (非 200)</option>
+            </select>
+          </label>
+          <label><span data-i18n="logs.pageSize">每页</span>
+            <select id="logsPageSize">
+              <option value="20">20</option>
+              <option value="50" selected>50</option>
+              <option value="100">100</option>
+            </select>
+          </label>
+          <button class="btn" id="logsSearch" data-i18n="logs.search">查询</button>
+        </form>
+        <table id="logsTable">
+          <thead><tr id="logsHead"></tr></thead>
+          <tbody><tr><td colspan="12" class="empty" data-i18n="logs.clickToLoad">点击「查询」加载</td></tr></tbody>
+        </table>
+        <div class="pager">
+          <span id="logsPageInfo">-</span>
+          <div class="controls">
+            <button class="btn btn-secondary" id="logsPrev" data-i18n="logs.prev">上一页</button>
+            <button class="btn btn-secondary" id="logsNext" data-i18n="logs.next">下一页</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 用量统计 -->
+    <section id="tab-stats" class="tab-content">
+      <h2 data-i18n="stats.title">用量统计</h2>
+      <div class="card">
+        <form class="filters" id="statsFilter" onsubmit="return false;">
+          <label><span data-i18n="stats.dimension">维度</span>
+            <select id="statsDimension">
+              <option value="service" selected data-i18n="stats.dimService">按服务</option>
+              <option value="model" data-i18n="stats.dimModel">按模型</option>
+            </select>
+          </label>
+          <label><span data-i18n="stats.granularity">粒度</span>
+            <select id="statsGranularity">
+              <option value="cumulative" selected data-i18n="stats.cumulative">累计</option>
+              <option value="daily" data-i18n="stats.daily">按日趋势</option>
+            </select>
+          </label>
+          <label><span data-i18n="logs.from">开始时间</span><input type="datetime-local" id="statsFrom"></label>
+          <label><span data-i18n="logs.to">结束时间</span><input type="datetime-local" id="statsTo"></label>
+          <label><span data-i18n="logs.service">服务</span>
+            <select id="statsService"><option value="" data-i18n="common.all">全部</option></select>
+          </label>
+          <label><span data-i18n="logs.model">模型</span><input type="text" id="statsModel" data-i18n-placeholder="logs.modelPlaceholder" placeholder="如 gpt-4o"></label>
+          <label><span data-i18n="stats.metric">指标</span>
+            <select id="statsMetric">
+              <option value="totalCalls" selected data-i18n="stats.metricCalls">调用次数</option>
+              <option value="successCount" data-i18n="stats.metricSuccess">成功数</option>
+              <option value="failureCount" data-i18n="stats.metricFailure">失败数</option>
+              <option value="promptTokensTotal">Prompt Tokens</option>
+              <option value="completionTokensTotal">Completion Tokens</option>
+              <option value="totalTokensTotal">Total Tokens</option>
+              <option value="avgDurationMs" data-i18n="stats.metricDuration">平均耗时(ms)</option>
+            </select>
+          </label>
+          <button class="btn" id="statsSearch" data-i18n="logs.search">查询</button>
+        </form>
+        <div class="chart-wrap"><canvas id="statsChart"></canvas></div>
+        <table id="statsTable">
+          <thead><tr id="statsHead"></tr></thead>
+          <tbody><tr><td colspan="8" class="empty" data-i18n="logs.clickToLoad">点击「查询」加载</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 配置管理 -->
+    <section id="tab-config" class="tab-content">
+      <h2 data-i18n="config.title">配置管理</h2>
+
+      <div class="card">
+        <div class="card-title" data-i18n="config.listenTitle">监听信息（启动时固定，修改需重启进程）</div>
+        <div class="kv-line"><span class="k" data-i18n="config.listenAddr">监听地址:端口</span><span class="v" id="cfgListen" data-i18n="common.loading">加载中…</span></div>
+        <div class="kv-line" style="margin-top:8px;">
+          <span class="k" data-i18n="config.callSample">调用示例</span>
+          <span class="v" id="cfgSample">-</span>
+        </div>
+        <div class="kv-line" style="margin-top:8px;">
+          <span class="k" data-i18n="config.manageUrl">管理入口</span>
+          <span class="v" id="cfgManageUrl">-</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title" data-i18n="config.globalKeyTitle">全局访问密钥（业务与管理共享，运行时即时生效）</div>
+        <div class="kv-line">
+          <span class="k" data-i18n="config.currentKey">当前密钥</span><span class="v" id="cfgGlobalKey" data-i18n="common.loading">加载中…</span>
+          <span id="cfgAuthBadge"></span>
+          <button class="btn btn-secondary btn-sm" id="editGlobalKeyBtn" style="margin-left:auto;" data-i18n="config.edit">修改</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+          <div class="card-title" style="margin-bottom:0;" data-i18n="config.servicesTitle">下游服务（运行时新增/编辑/删除即时生效，无需重启）</div>
+          <button class="btn btn-sm" id="addServiceBtn" data-i18n="config.addService">+ 新增服务</button>
+        </div>
+        <table id="configServicesTable">
+          <thead><tr id="configServicesHead"></tr></thead>
+          <tbody><tr><td colspan="9" class="empty" data-i18n="common.loading">加载中…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <!-- 日志详情 Modal -->
+  <div id="logModal" class="modal hidden">
+    <div class="modal-body wide">
+      <button class="close" id="modalClose">×</button>
+      <h3 data-i18n="logDetail.title">日志详情</h3>
+      <div id="logDetail"></div>
+      <div class="body-section" style="margin-top:16px; border-top: 1px solid var(--border); padding-top:12px;">
+        <h4 data-i18n="replay.title">重放操作</h4>
+        <div>
+          <button class="btn" id="replayBtn" data-i18n="replay.btn">一键重放</button>
+          <span id="replayStatus" class="replay-placeholder"></span>
+        </div>
+        <div id="replayResult" style="display:none; margin-top:12px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 服务新增/编辑 Modal -->
+  <div id="serviceModal" class="modal hidden">
+    <div class="modal-body">
+      <button class="close" id="serviceModalClose">×</button>
+      <h3 id="serviceModalTitle" data-i18n="service.addTitle">新增服务</h3>
+      <form class="form" id="serviceForm" onsubmit="return false;">
+        <div class="field">
+          <label data-i18n="service.nameLabel">服务名称</label>
+          <input type="text" id="fName" autocomplete="off">
+        </div>
+        <div class="field">
+          <label data-i18n="service.prefixLabel">URL 路径前缀</label>
+          <input type="text" id="fPrefix" autocomplete="off">
+          <span class="hint"><span data-i18n="service.prefixHint">客户端 base_url =</span> <code id="fPrefixHint">http://&lt;host&gt;:&lt;port&gt;/&lt;prefix&gt;</code></span>
+        </div>
+        <div class="field">
+          <label data-i18n="service.baseUrlLabel">下游 BaseUrl</label>
+          <input type="text" id="fBaseUrl" autocomplete="off" placeholder="https://api.openai.com/v1">
+        </div>
+        <div class="field">
+          <label data-i18n="service.formatLabel">下游格式</label>
+          <select id="fServiceFormat" style="border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;">
+            <option value="OpenAI" data-i18n="service.formatOpenAI">OpenAI 兼容</option>
+            <option value="Anthropic" data-i18n="service.formatAnthropic">Anthropic 原生</option>
+          </select>
+          <span class="hint" id="fFormatHint" data-i18n="service.formatHintOpenAI">OpenAI 格式</span>
+        </div>
+        <div class="field">
+          <label data-i18n="service.clientFormatLabel">客户端格式</label>
+          <select id="fClientFormat" style="border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;">
+            <option value="Auto" data-i18n="service.clientFormatAuto">自动（按鉴权头识别）</option>
+            <option value="OpenAI" data-i18n="service.clientFormatOpenAI">OpenAI</option>
+            <option value="Anthropic" data-i18n="service.clientFormatAnthropic">Anthropic</option>
+          </select>
+          <span class="hint" id="fClientFormatHint" data-i18n="service.clientFormatHintAuto">自动识别（按鉴权头）</span>
+        </div>
+        <div class="field" id="fApiKeyAddBlock">
+          <label data-i18n="service.apiKeyAddLabel">下游密钥</label>
+          <input type="password" id="fApiKeyAdd" autocomplete="off" placeholder="sk-...">
+        </div>
+        <div class="field" id="fApiKeyEditBlock" style="display:none;">
+          <label data-i18n="service.apiKeyEditLabel">下游密钥</label>
+          <div class="kv-line"><span class="k" data-i18n="service.apiKeyCurrent">当前</span><span class="v" id="fApiKeyCurrent">-</span></div>
+          <div class="radio-group" style="margin-top:6px;">
+            <label><input type="radio" name="fKeyMode" value="keep" checked> <span data-i18n="service.keyKeep">保持原值</span></label>
+            <label><input type="radio" name="fKeyMode" value="set"> <span data-i18n="service.keySet">设为新值</span> <input type="password" id="fApiKeySet" autocomplete="off" placeholder="sk-..." style="margin-left:6px;"></label>
+            <label><input type="radio" name="fKeyMode" value="clear"> <span data-i18n="service.keyClear">清除密钥</span></label>
+          </div>
+        </div>
+        <div class="checks">
+          <label class="check"><input type="checkbox" id="fLogReq" checked> <span data-i18n="service.logReq">记录请求体</span></label>
+          <label class="check"><input type="checkbox" id="fLogResp" checked> <span data-i18n="service.logResp">记录响应体</span></label>
+          <label class="check"><input type="checkbox" id="fAllowInvalidSsl"> <span data-i18n="service.allowSsl">允许无效 SSL 证书</span></label>
+        </div>
+        <div class="actions">
+          <button class="btn btn-secondary" id="serviceCancel" data-i18n="service.cancel">取消</button>
+          <button class="btn" id="serviceSave" data-i18n="service.save">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 全局密钥 Modal -->
+  <div id="globalKeyModal" class="modal hidden">
+    <div class="modal-body">
+      <button class="close" id="globalKeyModalClose">×</button>
+      <h3 data-i18n="globalKey.title">修改全局访问密钥</h3>
+      <form class="form" id="globalKeyForm" onsubmit="return false;">
+        <div class="kv-line"><span class="k" data-i18n="globalKey.current">当前</span><span class="v" id="gKeyCurrent">-</span></div>
+        <div class="field">
+          <label data-i18n="globalKey.action">操作</label>
+          <div class="radio-group">
+            <label><input type="radio" name="gKeyMode" value="keep" checked> <span data-i18n="globalKey.keep">保持原值</span></label>
+            <label><input type="radio" name="gKeyMode" value="set"> <span data-i18n="globalKey.set">设为新值</span> <input type="password" id="gKeySet" autocomplete="off" placeholder="proxy-local-..." style="margin-left:6px;"></label>
+            <label><input type="radio" name="gKeyMode" value="clear"> <span data-i18n="globalKey.clear">关闭鉴权</span></label>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="btn btn-secondary" id="globalKeyCancel" data-i18n="globalKey.cancel">取消</button>
+          <button class="btn" id="globalKeySave" data-i18n="globalKey.save">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 服务测试 Modal -->
+  <div id="testModal" class="modal hidden">
+    <div class="modal-body wide">
+      <button class="close" id="testModalClose">×</button>
+      <h3 id="testModalTitle" data-i18n="test.title">测试服务</h3>
+
+      <div class="test-meta" id="testServiceMeta"></div>
+
+      <div class="card-section">
+        <div class="card-section-title" data-i18n="test.requestConfig">请求配置</div>
+        <div class="test-form-row">
+          <label class="test-field">
+            <span data-i18n="test.method">方法</span>
+            <select id="tMethod">
+              <option value="POST" selected>POST</option>
+              <option value="GET">GET</option>
+            </select>
+          </label>
+          <label class="test-field test-field-grow">
+            <span data-i18n="test.path">路径</span>
+            <input type="text" id="tPath" autocomplete="off" spellcheck="false">
+          </label>
+          <label class="test-field">
+            <span data-i18n="test.clientFormat">客户端格式</span>
+            <select id="tClientFormat">
+              <option value="OpenAI">OpenAI</option>
+              <option value="Anthropic">Anthropic</option>
+            </select>
+          </label>
+          <label class="test-check"><input type="checkbox" id="tStream"> <span data-i18n="test.stream">流式响应 (SSE)</span></label>
+        </div>
+        <div class="test-form-row" style="margin-top:8px;">
+          <label class="test-field test-field-grow">
+            <span data-i18n="test.model">模型</span>
+            <div class="test-model-row">
+              <input type="text" id="tModelInput" autocomplete="off" spellcheck="false" placeholder="输入模型名">
+              <select id="tModelSelect"></select>
+              <button class="btn btn-secondary btn-sm" id="tDeleteModel" title="从历史删除当前选中的模型" data-i18n-title="test.deleteModelHint">✕</button>
+              <button class="btn btn-secondary btn-sm" id="tClearModels" title="清空模型历史" data-i18n-title="test.clearModelsHint">🗑</button>
+            </div>
+          </label>
+        </div>
+        <div class="kv-line" style="margin-top:8px;">
+          <span class="k" data-i18n="test.targetUrl">目标 URL</span>
+          <span class="v"><code id="tTargetUrl">-</code></span>
+        </div>
+        <div class="test-body-block">
+          <div class="test-body-head">
+            <span data-i18n="test.body">请求体</span>
+            <span class="hint" id="tBodyHint" style="display:none;" data-i18n="test.bodyHint">GET 请求不发送请求体</span>
+          </div>
+          <textarea id="tBody" class="test-body" spellcheck="false" autocomplete="off"></textarea>
+        </div>
+        <div class="test-actions">
+          <button class="btn" id="tSend" data-i18n="test.send">发送请求</button>
+          <button class="btn btn-secondary" id="tCopyScript" data-i18n="test.copyScript">复制 JS 脚本</button>
+          <button class="btn btn-secondary" id="tReset" data-i18n="test.reset">重置</button>
+          <button class="btn btn-secondary" id="testCancel" style="margin-left:auto;" data-i18n="test.cancel">取消</button>
+        </div>
+      </div>
+
+      <div class="card-section">
+        <div class="card-section-title" data-i18n="test.response">响应</div>
+        <div class="test-status-line" id="tStatusLine"></div>
+        <pre class="body" id="tResponse"></pre>
+      </div>
+
+      <div class="card-section">
+        <div class="card-section-title" data-i18n="test.script">JS 脚本</div>
+        <div class="hint" style="margin-bottom:6px;" data-i18n="test.scriptHint">将 &lt;YOUR_PROXY_API_KEY&gt; 替换为真实代理密钥</div>
+        <pre class="body test-script" id="tScript"></pre>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <script src="/admin/i18n.js"></script>
+  <script src="/admin/app.js"></script>
+</body>
+</html>
