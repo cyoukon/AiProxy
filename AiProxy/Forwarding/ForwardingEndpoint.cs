@@ -1,6 +1,8 @@
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
+using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using AiProxy.Config;
 using AiProxy.Forwarding.Converters;
 using Microsoft.AspNetCore.Http;
@@ -79,7 +81,8 @@ public sealed class ForwardingEndpoint
     /// <summary>
     /// 将客户端格式请求体转为下游格式并替换 <see cref="HttpContext.Request.Body"/>。
     /// ClientFormat=null（Auto）时按鉴权头推断；identity 场景经 IdentityConverter 原样返回，body 不变。
-    /// fail-open：转换失败或无可转换体时原样透传。转换后新长度存入 <see cref="ConvertedRequestLengthItemKey"/>。
+    /// 在转换后追加模型映射步骤：按 <see cref="AiServiceOptions.ModelMappings"/> 顺序首次命中替换 model 字段。
+    /// fail-open：转换/映射失败或无可转换体时原样透传。转换后新长度存入 <see cref="ConvertedRequestLengthItemKey"/>。
     /// 必须使用异步读取：请求体在 LogRequestBody=false 时未被中间件预读，可能仍是 Kestrel 原始请求流，
     /// Kestrel 默认禁用同步 IO（AllowSynchronousIO=false），同步 ReadToEnd 会抛 InvalidOperationException。
     /// </summary>
@@ -120,13 +123,107 @@ public sealed class ForwardingEndpoint
             return; // 转换异常 fail-open 原样透传
         }
 
-        var bytes = Encoding.UTF8.GetBytes(converted);
+        // 模型映射：在转换后请求体上按顺序首次命中替换 model 字段（fail-open，异常不阻塞转发）
+        var (finalBody, modelMapped) = ApplyModelMappings(converted, service);
+
+        var bytes = Encoding.UTF8.GetBytes(finalBody);
         var ms = new MemoryStream(bytes);
         ms.Position = 0;
         context.Request.Body = ms;
         context.Items[ConvertedRequestLengthItemKey] = (long)bytes.Length;
-        // 存储转换后的请求体供日志记录
-        context.Items["__AiProxy_ConvertedRequestBody"] = converted;
+        // 存储转换+映射后的最终请求体供日志记录（与原 __AiProxy_ConvertedRequestBody key 约定保持一致）
+        context.Items["__AiProxy_ConvertedRequestBody"] = finalBody;
+        // 标记是否触发了模型映射（identity 场景下也可能为 true），供日志中间件决定下游请求体来源
+        context.Items["__AiProxy_ModelMapped"] = modelMapped;
+    }
+
+    /// <summary>
+    /// 在转换后请求体上应用模型映射：按 <paramref name="service"/>.<see cref="AiServiceOptions.ModelMappings"/>
+    /// 顺序遍历，跳过 <see cref="ModelMappingOptions.Enabled"/>=false 的项，对 model 字段做
+    /// <see cref="Regex.IsMatch(string)"/> 测试。首次命中即用 <see cref="Regex.Replace(string, string)"/>
+    /// 替换 model 并停止遍历。fail-open：任何异常返回原 body 与 changed=false。
+    /// </summary>
+    /// <returns>(mappedBody, changed)：changed=true 表示 model 被替换（请求体已变更）。</returns>
+    private static (string mappedBody, bool changed) ApplyModelMappings(string body, AiServiceOptions service)
+    {
+        if (service.ModelMappings is null || service.ModelMappings.Count == 0)
+        {
+            return (body, false);
+        }
+
+        var model = OpenAiParser.TryGetModel(body);
+        if (model is null)
+        {
+            return (body, false); // 无 model 字段不处理
+        }
+
+        foreach (var mapping in service.ModelMappings)
+        {
+            if (!mapping.Enabled)
+            {
+                continue;
+            }
+            if (string.IsNullOrEmpty(mapping.Pattern))
+            {
+                continue; // 空 Pattern 跳过
+            }
+
+            Regex regex;
+            try
+            {
+                // CultureInvariant 保证跨区域一致行为；超时防 ReDoS
+                regex = new Regex(mapping.Pattern, RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+            }
+            catch
+            {
+                continue; // 编译失败的 Pattern 跳过（fail-open）
+            }
+
+            try
+            {
+                if (!regex.IsMatch(model))
+                {
+                    continue;
+                }
+                var newModel = regex.Replace(model, mapping.Replacement);
+                if (newModel == model)
+                {
+                    // 替换结果与原值相同（如 Pattern 命中但 Replacement 引用回原捕获），视为未变更
+                    return (body, false);
+                }
+                var mappedBody = ReplaceModelInBody(body, newModel);
+                return (mappedBody, true);
+            }
+            catch
+            {
+                return (body, false); // 匹配/替换异常 fail-open
+            }
+        }
+
+        return (body, false); // 无命中
+    }
+
+    /// <summary>
+    /// 将请求体 JSON 中的 model 字段替换为 <paramref name="newModel"/>。
+    /// 通过 <see cref="JsonNode"/> 解析并设置 root["model"]，重新序列化（格式可能变化，可接受）。
+    /// 解析失败则原样返回 <paramref name="body"/>（fail-open）。
+    /// </summary>
+    private static string ReplaceModelInBody(string body, string newModel)
+    {
+        try
+        {
+            var root = JsonNode.Parse(body);
+            if (root is JsonObject obj)
+            {
+                obj["model"] = newModel;
+                return obj.ToJsonString();
+            }
+        }
+        catch
+        {
+            // 解析失败原样返回
+        }
+        return body;
     }
 
     /// <summary>

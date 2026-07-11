@@ -48,6 +48,8 @@ public sealed class ConfigService
     public async Task AddServiceAsync(AiServiceInputDto input, CancellationToken ct = default)
     {
         ValidateServiceInput(input, existingName: null);
+        // input.ModelMappings null 时按空列表校验（合法），写入时也按空列表
+        ValidateModelMappings(input.ModelMappings ?? new List<ModelMappingOptions>());
 
         var (root, proxy, services) = await ReadConfigAsync(ct);
 
@@ -67,7 +69,9 @@ public sealed class ConfigService
             ExtraHeaders = input.ExtraHeaders,
             LogRequestBody = input.LogRequestBody,
             LogResponseBody = input.LogResponseBody,
-            AllowInvalidSslCertificates = input.AllowInvalidSslCertificates
+            AllowInvalidSslCertificates = input.AllowInvalidSslCertificates,
+            // input.ModelMappings 在 Add 场景 null 也按空列表处理（不替换）
+            ModelMappings = input.ModelMappings ?? new List<ModelMappingOptions>()
         };
         services.Add(JsonNode.Parse(JsonSerializer.Serialize(newService, _writeOptions))!);
 
@@ -104,6 +108,12 @@ public sealed class ConfigService
         if (input.ExtraHeaders is not null)
         {
             target["ExtraHeaders"] = JsonNode.Parse(JsonSerializer.Serialize(input.ExtraHeaders, _writeOptions));
+        }
+        // ModelMappings：null 保持原值；非空（含空列表）整体覆盖
+        if (input.ModelMappings is not null)
+        {
+            ValidateModelMappings(input.ModelMappings);
+            target["ModelMappings"] = JsonNode.Parse(JsonSerializer.Serialize(input.ModelMappings, _writeOptions));
         }
         // ApiKey 保留约定：null=保持，""=清空，非空=设新
         if (input.ApiKey is not null)
@@ -254,6 +264,31 @@ public sealed class ConfigService
              input.BaseUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase) == false))
         {
             throw new ArgumentException("BaseUrl 必须是合法的 http/https 绝对地址（含版本路径，如 https://api.openai.com/v1）");
+        }
+    }
+
+    /// <summary>
+    /// 校验模型映射列表：每条 Pattern 非空时须为合法 .NET 正则。
+    /// 空 Pattern 或空列表合法。非法正则抛 <see cref="ArgumentException"/>。
+    /// </summary>
+    private static void ValidateModelMappings(IEnumerable<ModelMappingOptions> mappings)
+    {
+        var idx = 0;
+        foreach (var m in mappings)
+        {
+            idx++;
+            if (string.IsNullOrEmpty(m.Pattern))
+            {
+                continue; // 空 Pattern 合法（不参与匹配）
+            }
+            try
+            {
+                _ = new System.Text.RegularExpressions.Regex(m.Pattern);
+            }
+            catch (System.Text.RegularExpressions.RegexParseException ex)
+            {
+                throw new ArgumentException($"ModelMappings[{idx}] Pattern 非法：{ex.Message}");
+            }
         }
     }
 

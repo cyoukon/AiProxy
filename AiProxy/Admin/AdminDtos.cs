@@ -1,3 +1,5 @@
+using AiProxy.Config;
+
 namespace AiProxy.Admin;
 
 /// <summary>服务概览项（脱敏）</summary>
@@ -115,6 +117,8 @@ public sealed class AiServiceConfigViewDto
     public bool LogRequestBody { get; set; }
     public bool LogResponseBody { get; set; }
     public bool AllowInvalidSslCertificates { get; set; }
+    /// <summary>模型映射规则列表（view 层不脱敏，直接引用配置）</summary>
+    public List<ModelMappingOptions> ModelMappings { get; set; } = new();
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -145,6 +149,10 @@ public sealed class AiServiceInputDto
     public bool LogRequestBody { get; set; } = true;
     public bool LogResponseBody { get; set; } = true;
     public bool AllowInvalidSslCertificates { get; set; } = false;
+    /// <summary>
+    /// 模型映射列表。null=保持原值（仅更新时有效）；非空（含空列表）=整体覆盖。
+    /// </summary>
+    public List<ModelMappingOptions>? ModelMappings { get; set; }
 }
 
 /// <summary>

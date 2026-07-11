@@ -1,6 +1,27 @@
 namespace AiProxy.Config;
 
 /// <summary>
+/// 模型映射规则：将请求体中的 model 字段按 <see cref="Pattern"/> 匹配并替换为 <see cref="Replacement"/>。
+/// 转发流程在格式转换后、写回请求体前应用：按列表顺序首次命中即替换并停止；空列表表示不替换。
+/// </summary>
+public sealed class ModelMappingOptions
+{
+    /// <summary>
+    /// .NET 正则模式，对请求体 model 字段做 <see cref="System.Text.RegularExpressions.Regex.IsMatch(string, string)"/> 测试。
+    /// 空字符串视为合法（不参与匹配，等同未配置）；运行时匹配加超时以防 ReDoS。
+    /// </summary>
+    public string Pattern { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 替换值，支持 $1、${name} 等反向引用（通过 <see cref="System.Text.RegularExpressions.Regex.Replace(string, string, string)"/> 应用）。
+    /// </summary>
+    public string Replacement { get; set; } = string.Empty;
+
+    /// <summary>是否启用本条映射；false 时跳过。</summary>
+    public bool Enabled { get; set; } = true;
+}
+
+/// <summary>
 /// 下游 AI 服务的接口协议格式。
 /// 决定鉴权方式、默认请求头、以及响应解析逻辑。
 /// </summary>
@@ -90,4 +111,10 @@ public sealed class AiServiceOptions
 
     /// <summary>是否允许无效 SSL 证书（默认 false）。当下游服务使用自签名证书或证书验证失败时设为 true。</summary>
     public bool AllowInvalidSslCertificates { get; set; } = false;
+
+    /// <summary>
+    /// 有序模型映射列表：转发时对请求体 model 字段按顺序首次匹配并替换。
+    /// 在格式转换后、写回请求体前应用。空列表（默认）表示不替换。
+    /// </summary>
+    public List<ModelMappingOptions> ModelMappings { get; set; } = new();
 }

@@ -32,7 +32,12 @@
     <EmbeddedResource Include="Admin\wwwroot\index.html" />
     <EmbeddedResource Include="Admin\wwwroot\style.css" />
     <EmbeddedResource Include="Admin\wwwroot\i18n.js" />
-    <EmbeddedResource Include="Admin\wwwroot\app.js" />
+    <EmbeddedResource Include="Admin\wwwroot\core.js" />
+    <EmbeddedResource Include="Admin\wwwroot\structured.js" />
+    <EmbeddedResource Include="Admin\wwwroot\logs.js" />
+    <EmbeddedResource Include="Admin\wwwroot\services.js" />
+    <EmbeddedResource Include="Admin\wwwroot\test.js" />
+    <EmbeddedResource Include="Admin\wwwroot\stats.js" />
   </ItemGroup>
 
   <!--

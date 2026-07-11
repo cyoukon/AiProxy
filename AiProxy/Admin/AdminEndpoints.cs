@@ -34,9 +34,14 @@ public static class AdminEndpoints
         // 定义资源列表
         var assets = new Dictionary<string, (string ResourceName, string ContentType)>
         {
-            ["/admin/style.css"] = ("AiProxy.Admin.wwwroot.style.css", "text/css; charset=utf-8"),
-            ["/admin/i18n.js"]   = ("AiProxy.Admin.wwwroot.i18n.js",   "application/javascript; charset=utf-8"),
-            ["/admin/app.js"]    = ("AiProxy.Admin.wwwroot.app.js",    "application/javascript; charset=utf-8"),
+            ["/admin/style.css"]    = ("AiProxy.Admin.wwwroot.style.css",    "text/css; charset=utf-8"),
+            ["/admin/i18n.js"]      = ("AiProxy.Admin.wwwroot.i18n.js",      "application/javascript; charset=utf-8"),
+            ["/admin/core.js"]      = ("AiProxy.Admin.wwwroot.core.js",      "application/javascript; charset=utf-8"),
+            ["/admin/structured.js"] = ("AiProxy.Admin.wwwroot.structured.js", "application/javascript; charset=utf-8"),
+            ["/admin/logs.js"]      = ("AiProxy.Admin.wwwroot.logs.js",      "application/javascript; charset=utf-8"),
+            ["/admin/services.js"]  = ("AiProxy.Admin.wwwroot.services.js",  "application/javascript; charset=utf-8"),
+            ["/admin/test.js"]      = ("AiProxy.Admin.wwwroot.test.js",      "application/javascript; charset=utf-8"),
+            ["/admin/stats.js"]     = ("AiProxy.Admin.wwwroot.stats.js",     "application/javascript; charset=utf-8"),
         };
 
         // 为每个资源计算哈希并存入 StaticAssets
@@ -399,7 +404,9 @@ public static class AdminEndpoints
                     ExtraHeaders = s.ExtraHeaders,
                     LogRequestBody = s.LogRequestBody,
                     LogResponseBody = s.LogResponseBody,
-                    AllowInvalidSslCertificates = s.AllowInvalidSslCertificates
+                    AllowInvalidSslCertificates = s.AllowInvalidSslCertificates,
+                    // view 层不脱敏：直接引用配置中的映射列表
+                    ModelMappings = s.ModelMappings
                 })
                 .OrderBy(x => x.Name)
                 .ToList()

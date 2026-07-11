@@ -200,15 +200,22 @@ public sealed class RequestLoggingMiddleware
             }
         }
 
-        // 下游请求体（转换后，由 ForwardingEndpoint 存入 Items）
-        string? downstreamRequestBody = null;
-        if (isConverted && service.LogRequestBody &&
-            context.Items.TryGetValue("__AiProxy_ConvertedRequestBody", out var convBody) && convBody is string convStr)
-        {
-            downstreamRequestBody = convStr;
-        }
+        // 下游请求体（转换/映射后，由 ForwardingEndpoint 存入 Items）
+        // isConverted：格式转换场景；isModelMapped：identity 场景下仅触发模型映射。
+        // 任一为真时下游请求体与客户端体不同。
+        bool isModelMapped = context.Items.TryGetValue("__AiProxy_ModelMapped", out var mm) && mm is true;
+        bool downstreamDiffers = isConverted || isModelMapped;
+        // 下游最终请求体只读取一次，供「下游请求体日志」与「Model 提取」共用，避免重复取值：
+        // - 下游请求体日志仅在 downstreamDiffers 且 LogRequestBody 时记录；
+        // - Model 始终优先下游最终体（记录实际转发模型，便于审计映射命中），无则回退客户端原始体。
+        context.Items.TryGetValue("__AiProxy_ConvertedRequestBody", out var downstreamBodyObj);
+        string? downstreamBodyText = downstreamBodyObj as string;
+        string? downstreamRequestBody = downstreamDiffers && service.LogRequestBody && downstreamBodyText != null
+            ? downstreamBodyText
+            : null;
 
         // 4. 构造日志实体
+        string? modelSource = !string.IsNullOrEmpty(downstreamBodyText) ? downstreamBodyText : requestBodyText;
         var downstreamUrl = BuildDownstreamUrl(service.BaseUrl, remainingPath, context.Request.QueryString);
         var statusCode = context.Response.StatusCode;
         var log = new RequestLog
@@ -229,7 +236,7 @@ public sealed class RequestLoggingMiddleware
 
             // 下游侧
             DownstreamUrl = downstreamUrl,
-            DownstreamRequestBody = service.LogRequestBody ? (isConverted ? downstreamRequestBody : requestBodyText) : null,
+            DownstreamRequestBody = service.LogRequestBody ? (downstreamDiffers ? downstreamRequestBody : requestBodyText) : null,
             DownstreamResponseBody = service.LogResponseBody ? (isConverted ? downstreamResponseBody : clientResponseBody) : null,
 
             PromptTokens = promptTokens,
@@ -239,7 +246,7 @@ public sealed class RequestLoggingMiddleware
             ErrorType = RequestLogHelpers.ClassifyError(statusCode),
             IsStream = isStream,
             IsReplay = false,
-            Model = OpenAiParser.TryGetModel(requestBodyText)
+            Model = OpenAiParser.TryGetModel(modelSource)
         };
 
         // 5. 控制台实时摘要

@@ -107,6 +107,20 @@ pre.body {
 .body-panel-header { display: flex; align-items: center; justify-content: space-between; }
 .body-panel-header h4 { margin: 0 0 6px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
 .fullscreen-btn { font-size: 14px; padding: 2px 6px; border-radius: 4px; cursor: pointer; }
+/* 请求/响应面板区分：蓝色边 / 绿色边 */
+.body-panel[data-kind="request"] { border-left: 3px solid #2563eb; padding-left: 8px; }
+.body-panel[data-kind="response"] { border-left: 3px solid #16a34a; padding-left: 8px; }
+.body-panel[data-kind="request"] .body-panel-header h4 { color: #2563eb; }
+.body-panel[data-kind="response"] .body-panel-header h4 { color: #16a34a; }
+.panel-dir-icon { display: inline-block; margin-right: 6px; font-weight: 700; }
+.body-panel[data-kind="request"] .panel-dir-icon { color: #2563eb; }
+.body-panel[data-kind="response"] .panel-dir-icon { color: #16a34a; }
+/* 头部操作按钮容器：悬浮显示（全屏时始终显示） */
+.panel-actions { display: flex; gap: 4px; opacity: 0; transition: opacity 0.15s; }
+.body-panel:hover .panel-actions,
+.body-panel.fullscreen .panel-actions { opacity: 1; }
+.copy-btn { font-size: 13px; padding: 2px 6px; border-radius: 4px; cursor: pointer; }
+.copy-btn:disabled { opacity: 0.3 !important; cursor: not-allowed; }
 .body-panel.fullscreen {
   position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 300;
   background: var(--panel); padding: 20px; margin: 0; border-radius: 0;
@@ -138,6 +152,28 @@ form.form .check { display: flex; align-items: center; gap: 6px; font-size: 13px
 form.form .radio-group { display: flex; flex-direction: column; gap: 6px; }
 form.form .radio-group label { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text); cursor: pointer; }
 form.form .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
+
+/* 模型映射列表 */
+.mappings-list { display: flex; flex-direction: column; gap: 8px; margin: 8px 0; }
+.mapping-row {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg);
+  transition: border-color 0.15s, background 0.15s;
+}
+.mapping-row .m-pattern, .mapping-row .m-replacement {
+  min-width: 120px; flex: 1 1 140px;
+}
+.mapping-arrow { color: var(--muted); font-weight: 600; flex-shrink: 0; }
+.mapping-row .check { font-size: 12px; color: var(--muted); flex-shrink: 0; }
+/* 匹配测试命中行高亮 */
+.mapping-match {
+  border-color: var(--success) !important;
+  background: rgba(22,163,74,0.08) !important;
+}
+@media (max-width: 720px) {
+  .mapping-row .m-pattern, .mapping-row .m-replacement { flex: 1 1 100%; }
+}
+
 .kv-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; }
 .kv-line .k { color: var(--muted); min-width: 110px; }
 .kv-line .v { font-family: ui-monospace, "SF Mono", Consolas, monospace; }

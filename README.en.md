@@ -12,9 +12,13 @@ A lightweight local AI API forwarding service with single-port + URL path prefix
 |-----------|-------------|
 | **URL Prefix Routing** | Routes by first path segment `/<prefix>/...` |
 | **OpenAI/Anthropic Compatible** | Format conversion between OpenAI and Anthropic, low-latency streaming |
+| **Request Model Mapping** | Rewrite the request body `model` field via regex rules before forwarding downstream |
 | **Unified Key Management** | Clients cannot access real upstream keys |
 | **Full Logging** | SQLite-persisted request/response, token usage |
 | **Web Admin Panel** | Service overview, log search, config, request replay |
+| **Tab Persistence** | Restores the last active admin panel tab after refresh |
+| **Hover-to-Copy Logs** | Hover over request/response body panels to reveal a copy button for one-click copy |
+| **Request/Response Distinction** | Blue → / green ← color bars and icons visually distinguish request from response |
 | **Hot Config Reload** | Admin panel edits take effect immediately, no restart needed |
 | **Cross-platform Single File** | Windows / macOS / Linux |
 
@@ -66,3 +70,66 @@ Open `http://localhost:8000/` for the admin panel.
 ![Log Query](docs/img/image-5.png)
 ![Log Detail - Success](docs/img/image-6.png)
 ![Log Detail - Failure](docs/img/image-7.png)
+
+---
+
+## Request Model Mapping
+
+Each downstream service can be configured with an ordered list of model mapping rules. At forwarding time, **after format conversion and before sending downstream**, the rules are applied in order to match and replace the `model` field in the request body. This is useful for redirecting a client-requested model name to the model actually available downstream.
+
+### Configuration Example
+
+Add `ModelMappings` to an element of the `AiServices` array in `appsettings.json`:
+
+```json
+{
+  "Name": "openai-proxy",
+  "PathPrefix": "openai",
+  "BaseUrl": "https://api.openai.com",
+  "ServiceFormat": "OpenAI",
+  "ModelMappings": [
+    {
+      "Pattern": "^gpt-4$",
+      "Replacement": "gpt-4-turbo",
+      "Enabled": true
+    },
+    {
+      "Pattern": "^claude-3-opus.*",
+      "Replacement": "claude-3-5-sonnet",
+      "Enabled": true
+    }
+  ]
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `Pattern` | A .NET regex tested against the request body `model` field via `IsMatch` |
+| `Replacement` | Replacement value, supports backreferences such as `$1`, `${name}` |
+| `Enabled` | Toggle to enable; `false` skips this rule |
+
+### Matching Rules
+
+- Rules are traversed in list order; only **enabled** mappings participate, and the **first match wins and stops** the traversal.
+- On a match, `Regex.Replace(model, Pattern, Replacement)` produces the new model, which is written back to the request body.
+- If nothing matches or the mapping list is empty, `model` is forwarded unchanged.
+- Format conversion runs before mapping, so mappings also apply across format conversions (e.g. OpenAI client → Anthropic downstream).
+
+### Regex & Safety
+
+- Uses .NET regex syntax, compiled with `RegexOptions.CultureInvariant` for consistent cross-culture behavior.
+- Each match has a **1-second timeout** to prevent ReDoS (regex denial of service) from malicious or inefficient patterns.
+- An empty `Pattern` is treated as valid but never participates in matching; an invalid regex is skipped at forwarding time (fail-open, never blocks the request).
+
+### Admin Panel Operations
+
+The **Model Mapping** section is available in the *Config Management → Edit Service* modal:
+
+- **Add / Delete**: the add button creates a new empty mapping; the ✕ button removes a single row.
+- **Reorder**: ↑ / ↓ buttons adjust the order, which is the configuration order persisted to `appsettings.json`.
+- **Enable toggle**: the checkbox on each row controls whether it participates in matching.
+- **Regex match test**: enter a model name in the test input to instantly see the first matching rule (highlighted) and the replacement result; "no match" is shown when nothing matches.
+
+### Log Impact
+
+The log `Model` field records the **model actually forwarded to downstream** (the `model` in the final request body after format conversion and model mapping), not the client's original model. Both the log list and detail views show this actual model.
