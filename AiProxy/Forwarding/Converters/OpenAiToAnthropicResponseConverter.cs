@@ -151,7 +151,7 @@ public sealed class OpenAiToAnthropicResponseConverter : INonStreamingResponseCo
         "length" => "max_tokens",
         "tool_calls" => "tool_use",
         "function_call" => "tool_use",
-        "content_filter" => "end_turn",
+        "content_filter" => "refusal",
         _ => "end_turn"
     };
 

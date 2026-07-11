@@ -140,6 +140,8 @@ public sealed class AnthropicToOpenAiResponseConverter : INonStreamingResponseCo
         "max_tokens" => "length",
         "tool_use" => "tool_calls",
         "stop_sequence" => "stop",
+        "pause_turn" => "stop",
+        "refusal" => "content_filter",
         _ => "stop"
     };
 

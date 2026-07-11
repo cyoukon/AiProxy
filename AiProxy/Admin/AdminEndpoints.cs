@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using AiProxy.Config;
 using AiProxy.Data;
 using AiProxy.Dtos;
@@ -18,36 +19,90 @@ public static class AdminEndpoints
     /// <summary>嵌入资源中 index.html 的资源名</summary>
     private const string IndexHtmlResource = "AiProxy.Admin.wwwroot.index.html";
 
-    /// <summary>程序集版本号，用作静态资源缓存破坏参数（版本变化 → URL 变化 → 浏览器重新请求）</summary>
-    private static readonly string _version = typeof(AdminEndpoints).Assembly
-        .GetName().Version?.ToString() ?? "0";
+    // 静态资源映射：URL 路径 → (资源名, ContentType, 内容哈希)
+    private static readonly Dictionary<string, (string ResourceName, string ContentType, string Hash)> StaticAssets = new();
+    
+    // 原始 index.html 内容的哈希（不包含注入的版本号）
+    private static readonly string _indexHtmlContentHash;
+    
+    // 组合 ETag（由 index.html 哈希 + 所有静态资源哈希生成）
+    private static readonly string _htmlETag;
 
-    private static readonly Dictionary<string, (string ResourceName, string ContentType)> StaticAssets = new()
+    // 静态初始化：一次性计算所有哈希（不缓存文件内容到内存）
+    static AdminEndpoints()
     {
-        ["/admin/style.css"] = ("AiProxy.Admin.wwwroot.style.css", "text/css; charset=utf-8"),
-        ["/admin/i18n.js"] = ("AiProxy.Admin.wwwroot.i18n.js", "application/javascript; charset=utf-8"),
-        ["/admin/app.js"] = ("AiProxy.Admin.wwwroot.app.js", "application/javascript; charset=utf-8"),
-    };
+        // 定义资源列表
+        var assets = new Dictionary<string, (string ResourceName, string ContentType)>
+        {
+            ["/admin/style.css"] = ("AiProxy.Admin.wwwroot.style.css", "text/css; charset=utf-8"),
+            ["/admin/i18n.js"]   = ("AiProxy.Admin.wwwroot.i18n.js",   "application/javascript; charset=utf-8"),
+            ["/admin/app.js"]    = ("AiProxy.Admin.wwwroot.app.js",    "application/javascript; charset=utf-8"),
+        };
+
+        // 为每个资源计算哈希并存入 StaticAssets
+        foreach (var kvp in assets)
+        {
+            var hash = ComputeEmbeddedResourceHash(kvp.Value.ResourceName);
+            StaticAssets[kvp.Key] = (kvp.Value.ResourceName, kvp.Value.ContentType, hash);
+        }
+
+        // 计算原始 index.html 的哈希（仅哈希，不保存文件内容）
+        _indexHtmlContentHash = ComputeEmbeddedResourceHash(IndexHtmlResource);
+
+        // 生成组合 ETag：index.html + 所有资源哈希的 SHA256 前 8 位
+        _htmlETag = ComputeCombinedETag();
+    }
+
+    /// <summary>计算单个嵌入资源的 SHA256 哈希（返回 8 位十六进制小写字符串）</summary>
+    private static string ComputeEmbeddedResourceHash(string resourceName)
+    {
+        var assembly = typeof(AdminEndpoints).Assembly;
+        using var stream = assembly.GetManifestResourceStream(resourceName);
+        if (stream == null)
+            return "00000000"; // 资源不存在时返回固定值，避免异常
+
+        using var ms = new MemoryStream();
+        stream.CopyTo(ms);
+        var hashBytes = SHA256.HashData(ms.ToArray());
+        return Convert.ToHexString(hashBytes)[..8].ToLowerInvariant();
+    }
+
+    /// <summary>组合 index.html 哈希 + 所有资源哈希，生成最终的 ETag</summary>
+    private static string ComputeCombinedETag()
+    {
+        var combined = _indexHtmlContentHash + string.Concat(StaticAssets.Values.Select(a => a.Hash));
+        var hashBytes = SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(combined));
+        return $"W/\"{Convert.ToHexString(hashBytes)[..8].ToLowerInvariant()}\"";
+    }
 
     public static void Map(IEndpointRouteBuilder endpoints)
     {
-        // 首页：单页 HTML（动态注入版本号到资源引用）
+        // 首页：单页 HTML（支持 ETag 协商缓存）
         endpoints.MapGet("/", IndexHandler).ExcludeFromDescription();
 
-        // 浏览器 favicon 静默处理（避免命中业务分支 400）
+        // 浏览器 favicon 静默处理
         endpoints.MapGet("/favicon.ico", context =>
         {
             context.Response.StatusCode = StatusCodes.Status204NoContent;
             return Task.CompletedTask;
         }).ExcludeFromDescription();
 
-        // 管理面板静态资源（CSS / JS）— 长缓存，靠版本号破坏
+        // 管理面板静态资源（CSS / JS）— 长缓存 + ETag 优化
         foreach (var (path, asset) in StaticAssets)
         {
             endpoints.MapGet(path, async context =>
             {
+                // 检查 ETag，匹配则返回 304（避免重复发送内容）
+                context.Response.Headers.ETag = asset.Hash;
+                if (context.Request.Headers.IfNoneMatch == asset.Hash)
+                {
+                    context.Response.StatusCode = StatusCodes.Status304NotModified;
+                    return;
+                }
+
                 context.Response.ContentType = asset.ContentType;
                 context.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+                
                 var assembly = typeof(AdminEndpoints).Assembly;
                 await using var stream = assembly.GetManifestResourceStream(asset.ResourceName);
                 if (stream == null)
@@ -76,7 +131,7 @@ public static class AdminEndpoints
         endpoints.MapDelete("/api/ai-services/{name}", DeleteServiceHandler).ExcludeFromDescription();
         endpoints.MapPut("/api/config/global-api-key", UpdateGlobalApiKeyHandler).ExcludeFromDescription();
 
-        // 5. 请求重放：POST /api/logs/{id}/replay
+        // 5. 请求重放
         endpoints.MapPost("/api/logs/{id:long}/replay", ReplayHandler).ExcludeFromDescription();
     }
 
@@ -87,8 +142,17 @@ public static class AdminEndpoints
     private static async Task IndexHandler(HttpContext ctx)
     {
         ctx.Response.ContentType = "text/html; charset=utf-8";
-        // index.html 本身不缓存（每次加载检查资源版本），但内容极小
         ctx.Response.Headers.CacheControl = "no-cache";
+        ctx.Response.Headers.ETag = _htmlETag;
+
+        // 客户端缓存验证：ETag 匹配则直接返回 304，跳过所有 IO
+        if (ctx.Request.Headers.IfNoneMatch == _htmlETag)
+        {
+            ctx.Response.StatusCode = StatusCodes.Status304NotModified;
+            return;
+        }
+
+        // 需要重新生成 HTML（嵌入资源读取 + 版本号注入）
         var assembly = typeof(AdminEndpoints).Assembly;
         await using var stream = assembly.GetManifestResourceStream(IndexHtmlResource);
         if (stream == null)
@@ -97,12 +161,16 @@ public static class AdminEndpoints
             await ctx.Response.WriteAsync("index.html embedded resource not found");
             return;
         }
-        // 读取 HTML 并注入版本号到静态资源引用（/admin/style.css → /admin/style.css?v=1.0.0）
-        using var reader = new System.IO.StreamReader(stream);
+
+        using var reader = new StreamReader(stream);
         var html = await reader.ReadToEndAsync();
-        html = html.Replace("/admin/style.css", $"/admin/style.css?v={_version}");
-        html = html.Replace("/admin/i18n.js", $"/admin/i18n.js?v={_version}");
-        html = html.Replace("/admin/app.js", $"/admin/app.js?v={_version}");
+
+        // 使用独立的版本哈希替换
+        foreach (var kvp in StaticAssets)
+        {
+            html = html.Replace(kvp.Key, $"{kvp.Key}?v={kvp.Value.Hash}");
+        }
+
         await ctx.Response.WriteAsync(html);
     }
 

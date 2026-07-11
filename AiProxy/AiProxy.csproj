@@ -6,7 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>AiProxy</RootNamespace>
     <AssemblyName>AiProxy</AssemblyName>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
     <!-- 单文件自包含发布配置（Task 8） -->
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
