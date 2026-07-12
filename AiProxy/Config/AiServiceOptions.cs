@@ -1,24 +1,29 @@
 namespace AiProxy.Config;
 
 /// <summary>
-/// 模型映射规则：将请求体中的 model 字段按 <see cref="Pattern"/> 匹配并替换为 <see cref="Replacement"/>。
+/// 模型映射规则：将请求体中的 model 字段按 <see cref="Pattern"/> 通配符匹配并替换为 <see cref="Replacement"/>。
 /// 转发流程在格式转换后、写回请求体前应用：按列表顺序首次命中即替换并停止；空列表表示不替换。
 /// </summary>
 public sealed class ModelMappingOptions
 {
     /// <summary>
-    /// .NET 正则模式，对请求体 model 字段做 <see cref="System.Text.RegularExpressions.Regex.IsMatch(string, string)"/> 测试。
-    /// 空字符串视为合法（不参与匹配，等同未配置）；运行时匹配加超时以防 ReDoS。
+    /// 通配符模式：<c>*</c> 匹配任意数量字符（含空），<c>?</c> 匹配单个字符，其余字符原义匹配。
+    /// 模式始终锚定全串（不会子串命中）。空字符串视为合法但永不匹配。
     /// </summary>
     public string Pattern { get; set; } = string.Empty;
 
     /// <summary>
-    /// 替换值，支持 $1、${name} 等反向引用（通过 <see cref="System.Text.RegularExpressions.Regex.Replace(string, string, string)"/> 应用）。
+    /// 替换值。模式命中时将 model 字段直接替换为该值（不支持反向引用）。
     /// </summary>
     public string Replacement { get; set; } = string.Empty;
 
     /// <summary>是否启用本条映射；false 时跳过。</summary>
     public bool Enabled { get; set; } = true;
+
+    /// <summary>
+    /// 是否区分大小写（默认 true）。false 时模式与 model 字段的比较忽略大小写。
+    /// </summary>
+    public bool CaseSensitive { get; set; } = true;
 }
 
 /// <summary>

@@ -268,28 +268,10 @@ public sealed class ConfigService
     }
 
     /// <summary>
-    /// 校验模型映射列表：每条 Pattern 非空时须为合法 .NET 正则。
-    /// 空 Pattern 或空列表合法。非法正则抛 <see cref="ArgumentException"/>。
+    /// 校验模型映射列表。通配符模式始终语法合法，无需校验。
     /// </summary>
     private static void ValidateModelMappings(IEnumerable<ModelMappingOptions> mappings)
     {
-        var idx = 0;
-        foreach (var m in mappings)
-        {
-            idx++;
-            if (string.IsNullOrEmpty(m.Pattern))
-            {
-                continue; // 空 Pattern 合法（不参与匹配）
-            }
-            try
-            {
-                _ = new System.Text.RegularExpressions.Regex(m.Pattern);
-            }
-            catch (System.Text.RegularExpressions.RegexParseException ex)
-            {
-                throw new ArgumentException($"ModelMappings[{idx}] Pattern 非法：{ex.Message}");
-            }
-        }
     }
 
     /// <summary>从字符串解析 ServiceFormat 枚举（容错，默认 OpenAI）</summary>

@@ -2,9 +2,9 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json.Nodes;
-using System.Text.RegularExpressions;
 using AiProxy.Config;
 using AiProxy.Forwarding.Converters;
+using AiProxy.Util;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Yarp.ReverseProxy.Forwarder;
@@ -139,12 +139,12 @@ public sealed class ForwardingEndpoint
 
     /// <summary>
     /// 在转换后请求体上应用模型映射：按 <paramref name="service"/>.<see cref="AiServiceOptions.ModelMappings"/>
-    /// 顺序遍历，跳过 <see cref="ModelMappingOptions.Enabled"/>=false 的项，对 model 字段做
-    /// <see cref="Regex.IsMatch(string)"/> 测试。首次命中即用 <see cref="Regex.Replace(string, string)"/>
-    /// 替换 model 并停止遍历。fail-open：任何异常返回原 body 与 changed=false。
+    /// 顺序遍历，跳过 <see cref="ModelMappingOptions.Enabled"/>=false 的项，对 model 字段做通配符匹配。
+    /// 首次命中即用 <see cref="ModelMappingOptions.Replacement"/> 直接替换 model 并停止遍历。
+    /// fail-open：任何异常返回原 body 与 changed=false。
     /// </summary>
     /// <returns>(mappedBody, changed)：changed=true 表示 model 被替换（请求体已变更）。</returns>
-    private static (string mappedBody, bool changed) ApplyModelMappings(string body, AiServiceOptions service)
+    internal static (string mappedBody, bool changed) ApplyModelMappings(string body, AiServiceOptions service)
     {
         if (service.ModelMappings is null || service.ModelMappings.Count == 0)
         {
@@ -168,27 +168,15 @@ public sealed class ForwardingEndpoint
                 continue; // 空 Pattern 跳过
             }
 
-            Regex regex;
             try
             {
-                // CultureInvariant 保证跨区域一致行为；超时防 ReDoS
-                regex = new Regex(mapping.Pattern, RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
-            }
-            catch
-            {
-                continue; // 编译失败的 Pattern 跳过（fail-open）
-            }
-
-            try
-            {
-                if (!regex.IsMatch(model))
+                if (!WildcardMatcher.IsMatch(model, mapping.Pattern, !mapping.CaseSensitive))
                 {
                     continue;
                 }
-                var newModel = regex.Replace(model, mapping.Replacement);
+                var newModel = mapping.Replacement;
                 if (newModel == model)
                 {
-                    // 替换结果与原值相同（如 Pattern 命中但 Replacement 引用回原捕获），视为未变更
                     return (body, false);
                 }
                 var mappedBody = ReplaceModelInBody(body, newModel);
@@ -196,7 +184,7 @@ public sealed class ForwardingEndpoint
             }
             catch
             {
-                return (body, false); // 匹配/替换异常 fail-open
+                return (body, false); // 匹配异常 fail-open
             }
         }
 
@@ -208,7 +196,7 @@ public sealed class ForwardingEndpoint
     /// 通过 <see cref="JsonNode"/> 解析并设置 root["model"]，重新序列化（格式可能变化，可接受）。
     /// 解析失败则原样返回 <paramref name="body"/>（fail-open）。
     /// </summary>
-    private static string ReplaceModelInBody(string body, string newModel)
+    internal static string ReplaceModelInBody(string body, string newModel)
     {
         try
         {

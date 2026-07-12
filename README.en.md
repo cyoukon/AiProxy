@@ -12,7 +12,7 @@ A lightweight local AI API forwarding service with single-port + URL path prefix
 |-----------|-------------|
 | **URL Prefix Routing** | Routes by first path segment `/<prefix>/...` |
 | **OpenAI/Anthropic Compatible** | Format conversion between OpenAI and Anthropic, low-latency streaming |
-| **Request Model Mapping** | Rewrite the request body `model` field via regex rules before forwarding downstream |
+| **Request Model Mapping** | Rewrite the request body `model` field via wildcard patterns before forwarding downstream |
 | **Unified Key Management** | Clients cannot access real upstream keys |
 | **Full Logging** | SQLite-persisted request/response, token usage |
 | **Web Admin Panel** | Service overview, log search, config, request replay |
@@ -89,12 +89,12 @@ Add `ModelMappings` to an element of the `AiServices` array in `appsettings.json
   "ServiceFormat": "OpenAI",
   "ModelMappings": [
     {
-      "Pattern": "^gpt-4$",
+      "Pattern": "gpt-4",
       "Replacement": "gpt-4-turbo",
       "Enabled": true
     },
     {
-      "Pattern": "^claude-3-opus.*",
+      "Pattern": "claude-3-opus*",
       "Replacement": "claude-3-5-sonnet",
       "Enabled": true
     }
@@ -104,22 +104,22 @@ Add `ModelMappings` to an element of the `AiServices` array in `appsettings.json
 
 | Field | Description |
 |-------|-------------|
-| `Pattern` | A .NET regex tested against the request body `model` field via `IsMatch` |
-| `Replacement` | Replacement value, supports backreferences such as `$1`, `${name}` |
+| `Pattern` | Wildcard pattern (`*` matches any characters, `?` matches a single character), matched against the request body `model` field |
+| `Replacement` | Replacement value; on match, the model is replaced directly with this value |
 | `Enabled` | Toggle to enable; `false` skips this rule |
 
 ### Matching Rules
 
 - Rules are traversed in list order; only **enabled** mappings participate, and the **first match wins and stops** the traversal.
-- On a match, `Regex.Replace(model, Pattern, Replacement)` produces the new model, which is written back to the request body.
+- On a match, the `model` is replaced with the `Replacement` value and written back to the request body.
 - If nothing matches or the mapping list is empty, `model` is forwarded unchanged.
 - Format conversion runs before mapping, so mappings also apply across format conversions (e.g. OpenAI client → Anthropic downstream).
 
-### Regex & Safety
+### Wildcard Rules
 
-- Uses .NET regex syntax, compiled with `RegexOptions.CultureInvariant` for consistent cross-culture behavior.
-- Each match has a **1-second timeout** to prevent ReDoS (regex denial of service) from malicious or inefficient patterns.
-- An empty `Pattern` is treated as valid but never participates in matching; an invalid regex is skipped at forwarding time (fail-open, never blocks the request).
+- `*` matches any number of characters (including empty), `?` matches a single character, all other characters match literally.
+- Patterns are always anchored to match the full string (no substring matching). For example, `gpt-4` only matches `gpt-4`, while `gpt-4*` matches `gpt-4`, `gpt-4o`, `gpt-4-turbo`.
+- An empty `Pattern` is treated as valid but never participates in matching.
 
 ### Admin Panel Operations
 
@@ -128,7 +128,6 @@ The **Model Mapping** section is available in the *Config Management → Edit Se
 - **Add / Delete**: the add button creates a new empty mapping; the ✕ button removes a single row.
 - **Reorder**: ↑ / ↓ buttons adjust the order, which is the configuration order persisted to `appsettings.json`.
 - **Enable toggle**: the checkbox on each row controls whether it participates in matching.
-- **Regex match test**: enter a model name in the test input to instantly see the first matching rule (highlighted) and the replacement result; "no match" is shown when nothing matches.
 
 ### Log Impact
 

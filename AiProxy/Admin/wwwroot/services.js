@@ -147,9 +147,8 @@ function openServiceModal(mode, name) {
   $('#serviceForm').reset();
   $('#fApiKeyEditBlock').style.display = 'none';
   $('#fApiKeyAddBlock').style.display = 'block';
-  // 清空模型映射状态与测试输入
+  // 清空模型映射状态
   serviceMappings = [];
-  $('#mappingTestInput').value = '';
 
   const addr = currentConfig?.proxy?.listenAddress || 'localhost';
   const port = currentConfig?.proxy?.listenPort || 8000;
@@ -182,13 +181,13 @@ function openServiceModal(mode, name) {
     serviceMappings = (s.modelMappings || []).map(m => ({
       pattern: m.pattern || '',
       replacement: m.replacement || '',
-      enabled: m.enabled !== false
+      enabled: m.enabled !== false,
+      caseSensitive: m.caseSensitive !== false
     }));
   } else {
     $('#serviceModalTitle').textContent = t('service.addTitle');
   }
   renderMappingsList();
-  runMappingTest();
   $('#serviceModal').classList.remove('hidden');
 }
 
@@ -196,7 +195,7 @@ $('#addServiceBtn').addEventListener('click', () => openServiceModal('add', null
 $('#serviceModalClose').addEventListener('click', () => $('#serviceModal').classList.add('hidden'));
 $('#serviceCancel').addEventListener('click', () => $('#serviceModal').classList.add('hidden'));
 
-// ─── Service Model Mappings (edit list + regex test) ────────────────────────
+// ─── Service Model Mappings (edit list) ────────────────────────────────────
 // 渲染模型映射行列表（数组顺序即配置顺序）
 function renderMappingsList() {
   const list = $('#mappingsList');
@@ -207,47 +206,12 @@ function renderMappingsList() {
       <input type="text" class="m-pattern" value="${escapeHtml(m.pattern)}" placeholder="${escapeHtml(t('service.mappingsPatternPlaceholder'))}" data-i18n-placeholder="service.mappingsPatternPlaceholder">
       <span class="mapping-arrow">→</span>
       <input type="text" class="m-replacement" value="${escapeHtml(m.replacement)}" placeholder="${escapeHtml(t('service.mappingsReplacementPlaceholder'))}" data-i18n-placeholder="service.mappingsReplacementPlaceholder">
+      <label class="check"><input type="checkbox" class="m-case-sensitive" ${m.caseSensitive ? 'checked' : ''}> <span data-i18n="service.mappingsCaseSensitive">${escapeHtml(t('service.mappingsCaseSensitive'))}</span></label>
       <label class="check"><input type="checkbox" class="m-enabled" ${m.enabled ? 'checked' : ''}> <span data-i18n="service.mappingsEnabled">${escapeHtml(t('service.mappingsEnabled'))}</span></label>
       <button class="btn btn-secondary btn-sm" data-act="up" data-i18n-title="service.mappingsMoveUp" title="${escapeHtml(t('service.mappingsMoveUp'))}">↑</button>
       <button class="btn btn-secondary btn-sm" data-act="down" data-i18n-title="service.mappingsMoveDown" title="${escapeHtml(t('service.mappingsMoveDown'))}">↓</button>
       <button class="btn btn-danger btn-sm" data-act="del" data-i18n-title="service.mappingsDelete" title="${escapeHtml(t('service.mappingsDelete'))}">✕</button>
     </div>`).join('');
-}
-
-// 正则匹配测试：按顺序首次匹配替换，与后端转发逻辑一致
-function runMappingTest() {
-  const input = $('#mappingTestInput');
-  const result = $('#mappingTestResult');
-  if (!input || !result) return;
-  const model = input.value;
-  // 清除之前的高亮
-  $$('#mappingsList .mapping-row').forEach(r => r.classList.remove('mapping-match'));
-  if (!model) { result.textContent = ''; result.style.color = ''; return; }
-  for (let i = 0; i < serviceMappings.length; i++) {
-    const m = serviceMappings[i];
-    if (!m.enabled) continue;
-    let regex;
-    try {
-      // test 用不带 g 的新实例，避免 lastIndex 陷阱
-      regex = new RegExp(m.pattern);
-    } catch {
-      result.textContent = t('service.mappingsInvalidRegex');
-      result.style.color = 'var(--failure)';
-      return;
-    }
-    if (regex.test(model)) {
-      // replace 用带 g 的实例，全局替换
-      const replaced = model.replace(new RegExp(m.pattern, 'g'), m.replacement);
-      result.textContent = t('service.mappingsResult') + ': ' + replaced;
-      result.style.color = 'var(--success)';
-      const row = $('#mappingsList .mapping-row[data-idx="' + i + '"]');
-      if (row) row.classList.add('mapping-match');
-      return;
-    }
-  }
-  // 无命中
-  result.textContent = t('service.mappingsNoMatch');
-  result.style.color = 'var(--muted)';
 }
 
 // 映射行 input：回写 pattern/replacement 到 serviceMappings（不 re-render，保留焦点）
@@ -258,8 +222,6 @@ $('#mappingsList').addEventListener('input', (e) => {
   if (isNaN(idx) || !serviceMappings[idx]) return;
   if (e.target.classList.contains('m-pattern')) serviceMappings[idx].pattern = e.target.value;
   else if (e.target.classList.contains('m-replacement')) serviceMappings[idx].replacement = e.target.value;
-  else return;
-  runMappingTest();
 });
 
 // 映射行 change：回写 enabled
@@ -270,11 +232,12 @@ $('#mappingsList').addEventListener('change', (e) => {
   if (isNaN(idx) || !serviceMappings[idx]) return;
   if (e.target.classList.contains('m-enabled')) {
     serviceMappings[idx].enabled = e.target.checked;
-    runMappingTest();
+  } else if (e.target.classList.contains('m-case-sensitive')) {
+    serviceMappings[idx].caseSensitive = e.target.checked;
   }
 });
 
-// 映射行 click：上移/下移/删除（操作后 re-render + 刷新测试）
+// 映射行 click：上移/下移/删除（操作后 re-render）
 $('#mappingsList').addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-act]');
   if (!btn) return;
@@ -291,18 +254,13 @@ $('#mappingsList').addEventListener('click', (e) => {
     serviceMappings.splice(idx, 1);
   } else return;
   renderMappingsList();
-  runMappingTest();
 });
 
 // 新增映射
 $('#addMappingBtn').addEventListener('click', () => {
-  serviceMappings.push({ pattern: '', replacement: '', enabled: true });
+  serviceMappings.push({ pattern: '', replacement: '', enabled: true, caseSensitive: true });
   renderMappingsList();
-  runMappingTest();
 });
-
-// 匹配测试输入
-$('#mappingTestInput').addEventListener('input', runMappingTest);
 
 async function saveService() {
   const name = $('#fName').value.trim();

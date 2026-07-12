@@ -6,7 +6,7 @@
 
 ## What Changes
 
-* **请求模型映射（后端 + 前端）**：在 `AiServiceOptions` 新增 `ModelMappings` 列表（每项含 `Pattern` 正则、`Replacement` 替换值、`Enabled` 开关，Seq 顺序）；转发链路在格式转换之后、发送下游之前按配置顺序首次匹配替换 `model` 字段；管理面板服务编辑表单新增映射配置区（增删、启用、上下排序、正则匹配测试）。
+* **请求模型映射（后端 + 前端）**：在 `AiServiceOptions` 新增 `ModelMappings` 列表（每项含 `Pattern` 通配符、`Replacement` 替换值、`Enabled` 开关，Seq 顺序）；转发链路在格式转换之后、发送下游之前按配置顺序首次匹配替换 `model` 字段；管理面板服务编辑表单新增映射配置区（增删、启用、上下排序）。
 
 * **实际模型记录**：日志 `Model` 字段改为从「发往下游的最终请求体」（转换 + 映射后）提取，反映真实转发模型；日志详情 meta 与日志列表模型列均显示该实际模型。
 
@@ -42,7 +42,7 @@
 
 ### Requirement: 请求模型映射配置
 
-下游 AI 服务 SHALL 支持配置一组有序的「请求模型映射」，每项含正则 `Pattern`、替换值 `Replacement`、启用开关 `Enabled`。映射列表可为空（空则不做任何替换）。
+下游 AI 服务 SHALL 支持配置一组有序的「请求模型映射」，每项含通配符 `Pattern`、替换值 `Replacement`、启用开关 `Enabled`。映射列表可为空（空则不做任何替换）。通配符规则：`*` 匹配任意数量字符（含空），`?` 匹配单个字符，其余字符原义匹配。
 
 #### Scenario: 新增服务时不配置映射
 
@@ -62,29 +62,13 @@
 
 * **THEN** 禁用的映射在转发匹配时被跳过
 
-### Requirement: 正则匹配测试
-
-服务编辑表单的映射区 SHALL 提供测试输入框：用户输入一个模型名后即时显示首条匹配的映射（高亮）与替换后的结果模型；无匹配时提示「无匹配」。
-
-#### Scenario: 输入匹配首条映射
-
-* **WHEN** 用户在测试框输入 `gpt-4` 且首条启用映射 Pattern `^gpt-4$` Replacement `gpt-4o`
-
-* **THEN** 测试区高亮该映射并显示结果 `gpt-4o`
-
-#### Scenario: 输入无匹配
-
-* **WHEN** 用户输入 `claude-3` 且无任何启用映射的 Pattern 匹配
-
-* **THEN** 测试区显示「无匹配」，结果为输入原值
-
 ### Requirement: 转发时按序首次匹配替换
 
-转发链路 SHALL 在格式转换之后、发送下游之前，按 `ModelMappings` 顺序遍历启用的映射，对请求体 `model` 字段执行：首条 `Regex.IsMatch(model, Pattern)` 命中的映射生效，新 model = `Regex.Replace(model, Pattern, Replacement)`，随后停止遍历。无命中则 model 不变。
+转发链路 SHALL 在格式转换之后、发送下游之前，按 `ModelMappings` 顺序遍历启用的映射，对请求体 `model` 字段执行：首条通配符 Pattern 匹配命中的映射生效，新 model = `Replacement`，随后停止遍历。无命中则 model 不变。通配符匹配：`*` 匹配任意数量字符，`?` 匹配单个字符。
 
 #### Scenario: 命中映射替换后转发
 
-* **WHEN** 客户端请求 model=`gpt-4`，服务配置首条启用映射 Pattern=`^gpt-4$` Replacement=`gpt-4o`
+* **WHEN** 客户端请求 model=`gpt-4`，服务配置首条启用映射 Pattern=`gpt-4` Replacement=`gpt-4o`
 
 * **THEN** 发往下游的请求体 model 被替换为 `gpt-4o`，下游收到 `gpt-4o`
 

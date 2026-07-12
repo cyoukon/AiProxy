@@ -27,6 +27,10 @@
     </PackageReference>
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="AiProxy.Tests" />
+  </ItemGroup>
+
   <!-- 管理面板静态资源嵌入为资源（无需 wwwroot 静态文件中间件，保持单文件部署友好） -->
   <ItemGroup>
     <EmbeddedResource Include="Admin\wwwroot\index.html" />

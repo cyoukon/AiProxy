@@ -165,11 +165,6 @@ form.form .actions { display: flex; gap: 8px; justify-content: flex-end; margin-
 }
 .mapping-arrow { color: var(--muted); font-weight: 600; flex-shrink: 0; }
 .mapping-row .check { font-size: 12px; color: var(--muted); flex-shrink: 0; }
-/* 匹配测试命中行高亮 */
-.mapping-match {
-  border-color: var(--success) !important;
-  background: rgba(22,163,74,0.08) !important;
-}
 @media (max-width: 720px) {
   .mapping-row .m-pattern, .mapping-row .m-replacement { flex: 1 1 100%; }
 }

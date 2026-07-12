@@ -243,16 +243,9 @@
         </div>
         <div class="field">
           <label data-i18n="service.modelMappings">请求模型映射</label>
-          <div class="hint" data-i18n="service.mappingsHint">按顺序首次匹配替换请求体 model 字段后转发给下游（支持正则）</div>
+          <div class="hint" data-i18n="service.mappingsHint">按顺序首次匹配替换请求体 model 字段后转发给下游（通配符：* 匹配任意字符，? 匹配单个字符）</div>
           <div id="mappingsList" class="mappings-list"></div>
           <button class="btn btn-secondary btn-sm" id="addMappingBtn" type="button" data-i18n="service.mappingsAdd">+ 新增映射</button>
-          <div class="mappings-test" style="margin-top:10px;">
-            <label style="font-size:12px;"><span data-i18n="service.mappingsTest">匹配测试</span></label>
-            <div style="display:flex;gap:6px;margin-top:4px;">
-              <input type="text" id="mappingTestInput" autocomplete="off" spellcheck="false" data-i18n-placeholder="service.mappingsTestPlaceholder" placeholder="输入模型名测试">
-              <span class="hint" id="mappingTestResult" style="align-self:center;"></span>
-            </div>
-          </div>
         </div>
         <div class="actions">
           <button class="btn btn-secondary" id="serviceCancel" data-i18n="service.cancel">取消</button>
